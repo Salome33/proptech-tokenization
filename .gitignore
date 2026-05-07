@@ -1,0 +1,19 @@
+## OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+## Java / Maven
+backend/target/
+backend/.mvn/
+backend/*.log
+
+## Node / Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/.cache/
+frontend/npm-debug.log*
+frontend/yarn-error.log*
+

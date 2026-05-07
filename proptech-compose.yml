@@ -1,0 +1,10 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      - JWT_SECRET=dev-only-change-me-please-dev-only-change-me-please
+      - JWT_EXP_MS=86400000
+
