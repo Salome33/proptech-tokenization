@@ -20,7 +20,6 @@ jobs:
       GAR_LOCATION: us-central1
       GAR_REPOSITORY: proptech-apis
       IMAGE_NAME: proptech-tokenization
-      WORKDIR: backend
 
     steps:
       - name: Checkout
@@ -32,10 +31,17 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Verify backend folder exists
+        run: |
+          ls -la
+          test -d backend || { echo "::error::No existe la carpeta backend/ en el repo. En tu PC ejecuta: git add backend frontend && git commit && git push"; exit 1; }
+          ls -la backend
 
       - name: Run backend tests
         run: mvn test
-        working-directory: ${{ env.WORKDIR }}
+        working-directory: backend
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -54,7 +60,7 @@ jobs:
           docker build -t "$IMAGE_URI" .
           docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
-        working-directory: ${{ env.WORKDIR }}
+        working-directory: backend
 
       - name: Deploy to Cloud Run
         run: |
