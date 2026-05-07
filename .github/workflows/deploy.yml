@@ -25,22 +25,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Resolver carpeta del backend (repo raíz o anidada)
+      # Diagnóstico: evita “adivinar” qué ve el runner tras checkout
+      - name: Diagnóstico (árbol y pom.xml)
+        shell: bash
         run: |
+          set -euo pipefail
           echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          pwd
-          ls -la
-          if [ -f backend/pom.xml ]; then
-            echo "BACKEND_DIR=backend" >> "$GITHUB_ENV"
-            echo "Usando BACKEND_DIR=backend"
-          elif [ -f proptech-tokenization/backend/pom.xml ]; then
-            echo "BACKEND_DIR=proptech-tokenization/backend" >> "$GITHUB_ENV"
-            echo "Usando BACKEND_DIR=proptech-tokenization/backend"
-          else
-            echo "::error::No se encontró pom.xml en backend/ ni en proptech-tokenization/backend/"
-            find . -maxdepth 4 -name pom.xml -print || true
-            exit 1
-          fi
+          ls -la "$GITHUB_WORKSPACE"
+          find "$GITHUB_WORKSPACE" -maxdepth 4 -name pom.xml -print || true
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -48,11 +40,25 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-          cache-dependency-path: ${{ env.BACKEND_DIR }}/pom.xml
+          cache-dependency-path: |
+            backend/pom.xml
+            proptech-tokenization/backend/pom.xml
 
       - name: Run backend tests
-        working-directory: ${{ env.BACKEND_DIR }}
-        run: mvn test
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          if [[ -f "$ROOT/backend/pom.xml" ]]; then
+            echo "Maven en: backend/"
+            (cd "$ROOT/backend" && mvn test)
+          elif [[ -f "$ROOT/proptech-tokenization/backend/pom.xml" ]]; then
+            echo "Maven en: proptech-tokenization/backend/"
+            (cd "$ROOT/proptech-tokenization/backend" && mvn test)
+          else
+            echo "::error::No hay pom.xml en backend/ ni en proptech-tokenization/backend/"
+            exit 1
+          fi
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -66,15 +72,27 @@ jobs:
         run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev --quiet
 
       - name: Build and push image
-        working-directory: ${{ env.BACKEND_DIR }}
+        shell: bash
         run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          if [[ -f "$ROOT/backend/pom.xml" ]]; then
+            BACK="$ROOT/backend"
+          elif [[ -f "$ROOT/proptech-tokenization/backend/pom.xml" ]]; then
+            BACK="$ROOT/proptech-tokenization/backend"
+          else
+            echo "::error::No hay Dockerfile context"
+            exit 1
+          fi
           IMAGE_URI="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          docker build -t "$IMAGE_URI" .
+          (cd "$BACK" && docker build -t "$IMAGE_URI" .)
           docker push "$IMAGE_URI"
           echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
       - name: Deploy to Cloud Run
+        shell: bash
         run: |
+          set -euo pipefail
           gcloud run deploy "${{ env.SERVICE_NAME }}" \
             --image "$IMAGE_URI" \
             --region "${{ env.REGION }}" \
@@ -84,10 +102,12 @@ jobs:
             --set-env-vars "JWT_EXP_MS=86400000,JWT_SECRET=${{ secrets.JWT_SECRET }}"
 
       - name: Smoke test /api/proptech/ping (expects 401/403)
+        shell: bash
         run: |
+          set -euo pipefail
           URL="$(gcloud run services describe "${{ env.SERVICE_NAME }}" --region "${{ env.REGION }}" --format 'value(status.url)')"
           CODE="$(curl -s -o /dev/null -w "%{http_code}" "$URL/api/proptech/ping")"
-          if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
+          if [[ "$CODE" == "401" || "$CODE" == "403" ]]; then
             echo "OK: protected endpoint returned $CODE"
           else
             echo "Unexpected status: $CODE"
