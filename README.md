@@ -79,7 +79,7 @@ mvn test
 
 ## Despliegue a Google Cloud Run (GitHub Actions)
 
-Workflow: `proptech-tokenization/.github/workflows/deploy.yml`
+Workflow: `.github/workflows/deploy.yml` (en la raíz del repo)
 
 Secrets requeridos en GitHub (Settings → Secrets and variables → Actions):
 
